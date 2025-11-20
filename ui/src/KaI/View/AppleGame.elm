@@ -59,13 +59,13 @@ main =
                         (\k ->
                             case k of
                                 "ArrowLeft" ->
-                                    MoveLeft
+                                    dummyMove Left
 
                                 "ArrowRight" ->
-                                    MoveRight
+                                    dummyMove Right
 
                                 "ArrowDown" ->
-                                    MoveDown
+                                    dummyMove Down
 
                                 _ ->
                                     None
@@ -74,14 +74,27 @@ main =
                     )
                 , Html.Attributes.attribute "tabindex" "0"
                 ]
-                [ Html.button [ Html.Attributes.id "move-left", Html.Events.onClick MoveLeft ] [ text "Move Left" ]
-                , Html.button [ Html.Attributes.id "move-down", Html.Events.onClick MoveDown ] [ text "Move Down" ]
-                , Html.button [ Html.Attributes.id "move-right", Html.Events.onClick MoveRight ] [ text "Move Right" ]
+                [ Html.button [ Html.Attributes.id "move-left", Html.Events.onClick <| dummyMove Left ] [ text "Move Left" ]
+                , Html.button [ Html.Attributes.id "move-down", Html.Events.onClick <| dummyMove Down ] [ text "Move Down" ]
+                , Html.button [ Html.Attributes.id "move-right", Html.Events.onClick <| dummyMove Right  ] [ text "Move Right" ]
                 ]
             , div []
                 [ text <| "Score: " ++ String.fromInt model.score ]
+            , div []
+                [ text <| "Queue size: " ++ String.fromInt (List.length model.commandQueue) ]
             ]
         , subscriptions = \_ -> Sub.none
+        }
+
+dummyMove : Direction -> Msg
+dummyMove dir =
+    PushCommand
+        { text =
+            case dir of
+                Left -> "Move Left!"
+                Right -> "Move Right!"
+                Down -> "Move Down!"
+        , direction = dir
         }
 
 type alias Model =
@@ -95,6 +108,8 @@ type alias Model =
     , nextId: Int
     , bigCombo: Bool
     , bigMultiplier: Bool
+    , commandQueue: List Command
+    , commandExecution: CommandExecution
     }
 
 type alias AppleStatus =
@@ -105,6 +120,22 @@ type alias AppleStatus =
     , consumed: Bool
     }
 
+type Direction
+    = Left
+    | Right
+    | Down
+
+type alias Command =
+    { text: String
+    , direction: Direction
+    }
+
+type CommandExecution
+    = Idle
+    | ShowText Command -- just show speech bubble
+    | ShowDirection Command -- additionally show direction arrow
+    | Animation -- perform the movement and scoring
+
 generateApple : Model -> Generator AppleStatus
 generateApple model =
     Random.map2
@@ -114,9 +145,9 @@ generateApple model =
 
 type Msg
     = None
-    | MoveLeft
-    | MoveRight
-    | MoveDown
+    | PushCommand Command
+    | HandleCommand
+    | Move Direction
     | AddApple AppleStatus
     | ResetBigCombo
 
@@ -135,6 +166,8 @@ init =
             , nextId = 0
             , bigCombo = False
             , bigMultiplier = False
+            , commandQueue = []
+            , commandExecution = Idle
             }
     in
         Tuple.pair model
@@ -210,6 +243,27 @@ view model =
                 ]
             ]
             [ text <| "x" ++ String.fromInt model.comboMultiplier ]
+        , case model.commandExecution of
+            Idle -> text ""
+            ShowText command -> div [ class "speech-bubble" ] [ text command.text ]
+            ShowDirection command -> div [ class "speech-bubble" ] [ text command.text ]
+            Animation -> text ""
+        , case model.commandExecution of
+            ShowDirection command -> div
+                [ class "move-arrow"
+                , class <| case command.direction of
+                    Left -> "left"
+                    Right -> "right"
+                    Down -> "down"
+                , Html.Attributes.style "left"
+                    <| String.concat
+                        [ String.fromFloat
+                            <| (toFloat model.basket + 0.5) / toFloat model.columns * 100.0
+                        , "%"
+                        ]
+                ]
+                [ img [ Html.Attributes.src "img/arrow.svg", Html.Attributes.alt "Arrow" ] [] ]
+            _ -> text ""
         ]
 
 moveApplesDownAndScore : Model -> Model
@@ -301,14 +355,68 @@ handleApples model =
                 ]
         )
 
+getDelay : Int -> Float
+getDelay listLength =
+    if listLength < 5 then
+        500.0
+    else if listLength < 10 then
+        200.0
+    else if listLength < 50 then
+        100.0
+    else 50.0
+
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
     case msg of
         None ->
             (model, Cmd.none)
-        MoveLeft -> handleApples { model | basket = max 0 (model.basket - 1) }
-        MoveRight -> handleApples { model | basket = min (model.columns - 1) (model.basket + 1) }
-        MoveDown -> handleApples model
+        PushCommand command ->
+            if List.isEmpty model.commandQueue && model.commandExecution == Idle then
+                ( { model | commandExecution = ShowText command }
+                , Task.perform
+                    (always HandleCommand)
+                    (Process.sleep <| (getDelay <| List.length model.commandQueue) / 5)
+                )
+            else
+                ( { model | commandQueue = model.commandQueue ++ [ command ] }
+                , Cmd.none
+                )
+        HandleCommand ->
+            case model.commandExecution of
+                ShowText command ->
+                    ( { model | commandExecution = ShowDirection command }
+                    , Task.perform
+                        (always HandleCommand)
+                        (Process.sleep <| getDelay <| List.length model.commandQueue)
+                    )
+                ShowDirection command ->
+                    update (Move command.direction) { model | commandExecution = Animation }
+                    |> Tuple.mapSecond
+                        (\cmd ->
+                            Cmd.batch
+                                [ cmd
+                                , Task.perform
+                                    (always HandleCommand)
+                                    (Process.sleep <| getDelay <| List.length model.commandQueue)
+                                ]
+                        )
+                Animation ->
+                    case model.commandQueue of
+                        [] ->
+                            ( { model | commandExecution = Idle }
+                            , Cmd.none
+                            )
+                        nextCommand :: rest ->
+                            ( { model | commandQueue = rest, commandExecution = ShowText nextCommand }
+                            , Task.perform
+                                (always HandleCommand)
+                                (Process.sleep <| (getDelay <| List.length model.commandQueue) / 5)
+                            )
+                Idle ->
+                    (model, Cmd.none)
+        Move Left -> handleApples { model | basket = max 0 (model.basket - 1) }
+        Move Right -> handleApples { model | basket = min (model.columns - 1) (model.basket + 1) }
+        Move Down -> handleApples model
         AddApple appleStatus -> Tuple.pair
             { model | apples = appleStatus :: model.apples, nextId = model.nextId + 1 }
             Cmd.none

@@ -4,3 +4,7 @@
 - [apple.svg](https://www.freepik.com/free-vector/apple-flat-style_255858079.htm)
 - [basket.svg](https://www.freepik.com/free-vector/wooden-bucket-white-background_18435714.htm)
     - drop shadow removed
+- [arrow.svg](https://www.freepik.com/free-vector/up-down-red-blue-arrows_234683324.htm)
+    - red arrow removed
+    - background removed
+    - viewbox fixed

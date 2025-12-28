@@ -1,4 +1,6 @@
 #!/bin/bash
 elm-live \
     --port=8000 \
-    src/KaI/View/AppleGame.elm
+    --start-page=index.html \
+    src/KaI/Main.elm \
+    -- --output=index.js

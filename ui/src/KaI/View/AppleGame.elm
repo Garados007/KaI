@@ -1,4 +1,4 @@
-module KaI.View.AppleGame exposing (Model, Msg, view, update)
+module KaI.View.AppleGame exposing (Model, Msg, init, view, update, pushCommand)
 
 import Browser
 import Html exposing (Html, div, img, text)
@@ -10,6 +10,7 @@ import Json.Decode as Decode
 import Task
 import Process
 import KaI.Images.Apple
+import KaI.NetworkMsg exposing (Direction(..), Command)
 
 {-| Defines at which combo step the multiplier is increased -}
 comboMultiplierStep : Int
@@ -89,7 +90,8 @@ main =
 dummyMove : Direction -> Msg
 dummyMove dir =
     PushCommand
-        { text =
+        { id = ""
+        , text =
             case dir of
                 Left -> "Move Left!"
                 Right -> "Move Right!"
@@ -120,16 +122,6 @@ type alias AppleStatus =
     , consumed: Bool
     }
 
-type Direction
-    = Left
-    | Right
-    | Down
-
-type alias Command =
-    { text: String
-    , direction: Direction
-    }
-
 type CommandExecution
     = Idle
     | ShowText Command -- just show speech bubble
@@ -150,6 +142,9 @@ type Msg
     | Move Direction
     | AddApple AppleStatus
     | ResetBigCombo
+
+pushCommand : Command -> Model -> (Model, Cmd Msg)
+pushCommand command model = update (PushCommand command) model
 
 init : (Model, Cmd Msg)
 init =

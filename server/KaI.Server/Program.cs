@@ -2,7 +2,8 @@
 using Serilog;
 using Serilog.Events;
 using System.CommandLine;
-using System.CommandLine.Invocation;
+
+[assembly: System.Reflection.Metadata.MetadataUpdateHandler(typeof(KaI.Server.Program))]
 
 namespace KaI.Server;
 
@@ -17,6 +18,8 @@ class Settings
 
 class Program
 {
+    public static Brain.DirectionClassifier? Classifier;
+
     static async Task<int> Main(string[] args)
     {
         Settings settings = new();
@@ -72,6 +75,46 @@ class Program
         return await rootCommand.Parse(args).InvokeAsync();
     }
 
+    static event Action? ApplicationUpdated;
+
+    public static void UpdateApplication(Type[]? _)
+    {
+        Console.WriteLine("Application update requested.");
+        ApplicationUpdated?.Invoke();
+    }
+
+    private static List<WebService> GetServices(MaxLib.WebServer.Server server)
+    {
+        List<WebService> services = [];
+        foreach (var service in server.WebServiceGroups.SelectMany(g => g.Value.GetAll<WebService>()))
+        {
+            services.Add(service);
+        }
+        return services;
+    }
+
+    static async Task SetupBrain(Settings settings)
+    {
+        Brain.DirectionClassifier? classifier;
+        if(settings.CacheDirectory is null)
+        {
+            // classifier = Brain.DirectionClassifier.CreateNew();
+            // await classifier.Training();
+            // Classifier = classifier;
+            Serilog.Log.Error("No cache directory specified, cannot load or save trained classifier.");
+            return;
+        }
+        var fileInfo = new FileInfo(Path.Combine(settings.CacheDirectory.FullName, "trained.nnet"));
+        classifier = Brain.DirectionClassifier.LoadFromFile(fileInfo);
+        if (classifier is null)
+        {
+            classifier = Brain.DirectionClassifier.CreateNew();
+            await classifier.Training();
+            classifier.SaveToFile(fileInfo);
+        }
+        Classifier = classifier;
+    }
+
     static async Task<int> RunServerAsync(Settings settings)
     {
         Log.Logger = new LoggerConfiguration()
@@ -83,7 +126,61 @@ class Program
 
         using var server = new MaxLib.WebServer.Server(new WebServerSettings(settings.Port, 5000));
         server.InitialDefault();
-        if(settings.CacheDirectory != null)
+        var initialServices = GetServices(server);
+
+        static void SetupServer(Settings settings, MaxLib.WebServer.Server server, List<WebService> initialServices, bool fromUpdate)
+        {
+            if (fromUpdate)
+            {
+                Log.Information("Application updated, clearing old services...");
+                foreach (var service in GetServices(server).Except(initialServices))
+                {
+                    if(service is MaxLib.WebServer.WebSocket.WebSocketService webSocketService)
+                    {
+                        foreach (var endpoint in webSocketService.Endpoints.OfType<WebSocketEndpoint>())
+                        {
+                            endpoint.Reload();
+                        }
+                        continue;
+                    }
+                    server.RemoveWebService(service);
+                    service.Dispose();
+                }
+                Log.Information("Application updated, starting new services...");
+            }
+            else
+            {
+                // add websocket service
+                var ws = new MaxLib.WebServer.WebSocket.WebSocketService();
+                ws.Add(new WebSocketEndpoint());
+                server.AddWebService(ws);
+            }
+
+            // add data directory if specified
+            if (settings.DataDirectory != null)
+            {
+                var mapper = new MaxLib.WebServer.Services.LocalIOMapper();
+                mapper.AddFileMapping("data", settings.DataDirectory.FullName);
+                server.AddWebService(mapper);
+                Log.Information("Data directory '{dir}' added at request path '/data'.",
+                    settings.DataDirectory.FullName);
+            }
+
+            // add rest api service
+            var restApi = MaxLib.WebServer.Builder.Service.Build<RestApi>();
+            if(restApi is not null)
+            {
+                server.AddWebService(restApi);
+                Log.Information("Rest API service added at request path '/api'.");
+            }
+
+            if (fromUpdate)
+                Log.Information("Application update completed.");
+
+            Task.Run(async () => await SetupBrain(settings));
+        }
+
+        if (settings.CacheDirectory != null)
         {
             await MimeType.LoadMimeTypesForExtensions(true, Path.Combine(settings.CacheDirectory.FullName, "mime-types.json"));
         }
@@ -92,15 +189,8 @@ class Program
             await MimeType.LoadMimeTypesForExtensions(false, null);
         }
 
-        // add data directory if specified
-        if (settings.DataDirectory != null)
-        {
-            var mapper = new MaxLib.WebServer.Services.LocalIOMapper();
-            mapper.AddFileMapping("data", settings.DataDirectory.FullName);
-            server.AddWebService(mapper);
-            Log.Information("Data directory '{dir}' added at request path '/data'.",
-                settings.DataDirectory.FullName);
-        }
+        SetupServer(settings, server, initialServices, false);
+        ApplicationUpdated += () => SetupServer(settings, server, initialServices, true);
 
         await server.RunAsync(cancelFromConsoleInput: true);
 

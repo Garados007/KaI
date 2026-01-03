@@ -6,6 +6,7 @@ public class WebSocketConnection : EventConnection
 {
     readonly static List<WebSocketConnection> peers = [];
     readonly static ReaderWriterLockSlim peerLock = new();
+    readonly Serilog.ILogger logger = Serilog.Log.ForContext<WebSocketConnection>();
 
     public WebSocketConnection(Stream networkStream, EventFactory factory)
         : base(networkStream, factory)
@@ -38,6 +39,11 @@ public class WebSocketConnection : EventConnection
         return Task.CompletedTask;
     }
 
+    private static readonly System.Text.Json.JsonSerializerOptions jsonOptions = new()
+    {
+        WriteIndented = true
+    };
+
     protected override Task ReceivedFrame(EventBase @event)
     {
         _ = Task.Run(async () =>
@@ -45,13 +51,31 @@ public class WebSocketConnection : EventConnection
             switch (@event)
             {
                 case Events.Command cmd:
-                    Serilog.Log.Information("Received command: \"{cmd}\" => {dir}", cmd.Text, cmd.Direction);
+                    logger.Information("Received command: \"{cmd}\" => {dir}", cmd.Text, cmd.Direction);
                     break;
                 case Events.Foo foo:
-                    Serilog.Log.Information("Foo!");
+                    logger.Information("Foo!");
                     break;
                 case Events.Score score:
-                    Serilog.Log.Information("Received score: {score} with combo {combo}", score.ScoreValue, score.Combo);
+                    logger.Information("Received score: {score} with combo {combo}", score.ScoreValue, score.Combo);
+                    var database = Program.Database;
+                    if (database is null)
+                    {
+                        logger.Warning("Database is not available.");
+                        break;
+                    }
+                    // store the score to the database
+                    database.AddScore(score);
+                    // submit aggregated score to all clients
+                    await SendToAll(new Events.ScoreStats
+                    {
+                        TodayHighScore = database.TodayHighScore,
+                        AlltimeHighScore = database.AlltimeHighScore,
+                        TodayHighCombo = database.TodayHighCombo,
+                        AlltimeHighCombo = database.AlltimeHighCombo,
+                        CurrentScore = score.ScoreValue,
+                        CurrentCombo = score.Combo
+                    });
                     break;
             }
         });

@@ -1,6 +1,7 @@
 ﻿using MaxLib.WebServer;
 using Serilog;
 using Serilog.Events;
+using Serilog.Filters;
 using System.CommandLine;
 
 [assembly: System.Reflection.Metadata.MetadataUpdateHandler(typeof(KaI.Server.Program))]
@@ -14,16 +15,24 @@ class Settings
     public DirectoryInfo? DataDirectory { get; set; }
 
     public DirectoryInfo? CacheDirectory { get; set; }
+
+    public string? TwitchApiClientId { get; set; }
 };
 
 class Program
 {
     public static Brain.DirectionClassifier? Classifier;
 
+    public static DB? Database;
+
+    public static Settings Settings { get; private set; } = new();
+
+    private static TwitchConnection? twitchConnection;
+
+    private static readonly Serilog.ILogger log = Log.ForContext<Program>();
+
     static async Task<int> Main(string[] args)
     {
-        Settings settings = new();
-
         var rootCommand = new RootCommand("KaI Server Application");
 
         // Port option to define the server port
@@ -31,7 +40,7 @@ class Program
         {
             Description = "The port on which the server will listen.",
             Required = false,
-            DefaultValueFactory = _ => settings.Port,
+            DefaultValueFactory = _ => Settings.Port,
         };
         rootCommand.Options.Add(portOption);
 
@@ -58,10 +67,19 @@ class Program
         cacheDirOption.Validators.Add(result =>
         {
             var dir = result.GetValueOrDefault<DirectoryInfo>();
+            Console.WriteLine($"Cache dir: {dir}");
             if (dir != null && !dir.Exists)
                 result.AddError($"The specified cache directory '{dir.FullName}' does not exist.");
         });
         rootCommand.Options.Add(cacheDirOption);
+
+        // twitch api client id option
+        var twitchClientIdOption = new Option<string>("--twitch-client-id")
+        {
+            Description = "The Twitch API Client ID to use for Twitch integrations.",
+            Required = false,
+        };
+        rootCommand.Options.Add(twitchClientIdOption);
 
         // finalize root command
         rootCommand.SetAction(async result => await RunServerAsync(new Settings
@@ -69,18 +87,20 @@ class Program
             Port = result.GetValue(portOption),
             DataDirectory = result.GetValue(dataDirOption),
             CacheDirectory = result.GetValue(cacheDirOption),
+            TwitchApiClientId = result.GetValue(twitchClientIdOption),
         }));
 
         // parse the finalized configuration and run, this also handles help and version commands
         return await rootCommand.Parse(args).InvokeAsync();
     }
 
-    static event Action? ApplicationUpdated;
+    static event Func<Task>? ApplicationUpdated;
 
-    public static void UpdateApplication(Type[]? _)
+    public static void UpdateApplication(Type[]? types)
     {
         Console.WriteLine("Application update requested.");
-        ApplicationUpdated?.Invoke();
+        if (ApplicationUpdated != null)
+            _ = ApplicationUpdated.Invoke();
     }
 
     private static List<WebService> GetServices(MaxLib.WebServer.Server server)
@@ -101,7 +121,7 @@ class Program
             // classifier = Brain.DirectionClassifier.CreateNew();
             // await classifier.Training();
             // Classifier = classifier;
-            Serilog.Log.Error("No cache directory specified, cannot load or save trained classifier.");
+            log.Error("No cache directory specified, cannot load or save trained classifier.");
             return;
         }
         var fileInfo = new FileInfo(Path.Combine(settings.CacheDirectory.FullName, "trained.nnet"));
@@ -117,10 +137,17 @@ class Program
 
     static async Task<int> RunServerAsync(Settings settings)
     {
+        Settings = settings;
+
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Verbose()
+            .Filter.ByExcluding(x =>
+                (x.Level == LogEventLevel.Verbose || x.Level == LogEventLevel.Debug) &&
+                x.Properties.GetValueOrDefault("SourceContext") is ScalarValue sv &&
+                sv.Value is string sc &&
+                sc.StartsWith("TwitchLib."))
             .WriteTo.Console(LogEventLevel.Verbose,
-                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
         WebServerLog.LogPreAdded += WebServerLog_LogPreAdded;
 
@@ -128,11 +155,13 @@ class Program
         server.InitialDefault();
         var initialServices = GetServices(server);
 
-        static void SetupServer(Settings settings, MaxLib.WebServer.Server server, List<WebService> initialServices, bool fromUpdate)
+        static async ValueTask SetupServer(Settings settings, MaxLib.WebServer.Server server, List<WebService> initialServices, bool fromUpdate)
         {
+            Settings = settings;
+
             if (fromUpdate)
             {
-                Log.Information("Application updated, clearing old services...");
+                log.Information("Application updated, clearing old services...");
                 foreach (var service in GetServices(server).Except(initialServices))
                 {
                     if(service is MaxLib.WebServer.WebSocket.WebSocketService webSocketService)
@@ -146,7 +175,7 @@ class Program
                     server.RemoveWebService(service);
                     service.Dispose();
                 }
-                Log.Information("Application updated, starting new services...");
+                log.Information("Application updated, starting new services...");
             }
             else
             {
@@ -162,7 +191,7 @@ class Program
                 var mapper = new MaxLib.WebServer.Services.LocalIOMapper();
                 mapper.AddFileMapping("data", settings.DataDirectory.FullName);
                 server.AddWebService(mapper);
-                Log.Information("Data directory '{dir}' added at request path '/data'.",
+                log.Information("Data directory '{dir}' added at request path '/data'.",
                     settings.DataDirectory.FullName);
             }
 
@@ -171,26 +200,37 @@ class Program
             if(restApi is not null)
             {
                 server.AddWebService(restApi);
-                Log.Information("Rest API service added at request path '/api'.");
+                log.Information("Rest API service added at request path '/api'.");
             }
 
             if (fromUpdate)
-                Log.Information("Application update completed.");
+                log.Information("Application update completed.");
+            _ = Task.Run(async () => await SetupBrain(settings));
 
-            Task.Run(async () => await SetupBrain(settings));
+            if (twitchConnection is not null)
+            {
+                await twitchConnection.DisposeAsync();
+            }
+            if (!string.IsNullOrEmpty(settings.TwitchApiClientId))
+            {
+                twitchConnection = await TwitchConnection.CreateAsync(settings.TwitchApiClientId);
+            }
         }
 
+        Database?.Dispose();
         if (settings.CacheDirectory != null)
         {
             await MimeType.LoadMimeTypesForExtensions(true, Path.Combine(settings.CacheDirectory.FullName, "mime-types.json"));
+            Database = new DB(Path.Combine(settings.CacheDirectory.FullName, "kai-database.litedb"));
         }
         else
         {
             await MimeType.LoadMimeTypesForExtensions(false, null);
+            Database = null;
         }
 
-        SetupServer(settings, server, initialServices, false);
-        ApplicationUpdated += () => SetupServer(settings, server, initialServices, true);
+        await SetupServer(settings, server, initialServices, false);
+        ApplicationUpdated += async () => await SetupServer(settings, server, initialServices, true);
 
         await server.RunAsync(cancelFromConsoleInput: true);
 
@@ -219,7 +259,8 @@ class Program
             serilogMessageTemplate,
             [
                 new LogEventProperty("infoType", new ScalarValue(eventArgs.LogItem.InfoType)),
-                new LogEventProperty("info", new ScalarValue(eventArgs.LogItem.Information))
+                new LogEventProperty("info", new ScalarValue(eventArgs.LogItem.Information)),
+                new LogEventProperty("SourceContext", new ScalarValue(eventArgs.LogItem.SenderType))
             ]
         ));
     }

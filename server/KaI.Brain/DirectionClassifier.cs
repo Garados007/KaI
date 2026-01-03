@@ -208,7 +208,7 @@ public class DirectionClassifier
             if (char.IsAsciiLetterLower(text[i]))
                 inputs[i * 27 + (text[i] - 'a')] = 1.0f;
             else if (char.IsAsciiLetterUpper(text[i]))
-                inputs[i * 27 + (text[i] - 'a')] = 1.0f;
+                inputs[i * 27 + (text[i] - 'A')] = 1.0f;
             else inputs[i * 27 + 26] = 1.0f; // space
         }
         inputs[InputSize - 1] = 1; // bias input

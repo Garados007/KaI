@@ -2,3 +2,4 @@ elm-stuff
 ui/index.js
 bin
 obj
+.env

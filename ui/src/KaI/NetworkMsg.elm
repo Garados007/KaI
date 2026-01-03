@@ -2,9 +2,12 @@ module KaI.NetworkMsg exposing (..)
 
 import Json.Encode as JE
 import Json.Decode as JD
+import Time exposing (Posix)
+import Iso8601
 
 type RecNetworkMsg
     = RecCommand Command
+    | RecScoreStats ScoreStats
 
 decodeMsg : JD.Decoder RecNetworkMsg
 decodeMsg =
@@ -14,6 +17,9 @@ decodeMsg =
                 case msgType of
                     "Command" ->
                         JD.map RecCommand decodeCommandMsg
+
+                    "ScoreStats" ->
+                        JD.map RecScoreStats decodeScoreStats
 
                     _ ->
                         JD.fail ("Unknown message type: " ++ msgType)
@@ -88,7 +94,8 @@ encodeCommandMsg cmdMsg =
         ]
 
 type alias Score =
-    { score: Int
+    { lastCommand: Maybe String
+    , score: Int
     , combo: Int
     }
 
@@ -96,6 +103,43 @@ encodeScore : Score -> JE.Value
 encodeScore scoreMsg =
     JE.object
         [ ("$type", JE.string "Score" )
+        , ( "lastCommand", Maybe.map JE.string scoreMsg.lastCommand |> Maybe.withDefault JE.null )
         , ( "score", JE.int scoreMsg.score )
         , ( "combo", JE.int scoreMsg.combo )
         ]
+
+type alias HighScoreValue =
+    { value: Int
+    , achievedAt: Posix
+    }
+
+decodeHighScoreValue : JD.Decoder HighScoreValue
+decodeHighScoreValue =
+    JD.map2 HighScoreValue
+        (JD.field "Value" JD.int)
+        (JD.field "AchievedAt" Iso8601.decoder)
+
+type alias ScoreStats =
+    { todayHighScore: HighScoreValue
+    , allTimeHighScore: HighScoreValue
+    , todayHighCombo: HighScoreValue
+    , allTimeHighCombo: HighScoreValue
+    , currentScore: Int
+    , currentCombo: Int
+    }
+
+decodeScoreStats : JD.Decoder ScoreStats
+decodeScoreStats =
+    let
+        decodeValue : JD.Decoder HighScoreValue
+        decodeValue =
+            JD.nullable decodeHighScoreValue
+            |> JD.map
+                (Maybe.withDefault <| HighScoreValue 0 <| Time.millisToPosix 0)
+    in JD.map6 ScoreStats
+        (JD.field "todayHighScore" decodeValue)
+        (JD.field "alltimeHighScore" decodeValue)
+        (JD.field "todayHighCombo" decodeValue)
+        (JD.field "alltimeHighCombo" decodeValue)
+        (JD.field "currentScore" JD.int)
+        (JD.field "currentCombo" JD.int)

@@ -56,7 +56,8 @@ update msg model =
                 [ Cmd.map WrapGameMsg gameCmd
                 , if (model.score, model.combo) /= (updatedGameModel.score, updatedGameModel.combo) then
                     send <| NetworkMsg.SendScore
-                        { score = updatedGameModel.score
+                        { lastCommand = updatedGameModel.lastCommand
+                        , score = updatedGameModel.score
                         , combo = updatedGameModel.combo
                         }
                   else
@@ -78,6 +79,17 @@ update msg model =
                                     , send <| NetworkMsg.SendCommand commandMsg
                                     ]
                                 )
+                        NetworkMsg.RecScoreStats scoreStatsMsg ->
+                            if model.lastCommand == Nothing
+                            then Tuple.pair
+                                { model
+                                | score = max model.score scoreStatsMsg.currentScore
+                                , combo = max model.combo scoreStatsMsg.currentCombo
+                                , comboMultiplier = AppleGame.getComboMultiplier <| max model.combo scoreStatsMsg.currentCombo
+                                }
+                                Cmd.none
+                            else (model, Cmd.none)
+
                 Err _ ->
                     -- Handle decode error here
                     ( model, Cmd.none)

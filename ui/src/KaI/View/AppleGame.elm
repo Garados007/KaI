@@ -1,4 +1,4 @@
-module KaI.View.AppleGame exposing (Model, Msg, init, view, update, pushCommand)
+module KaI.View.AppleGame exposing (Model, Msg, init, view, update, pushCommand, getComboMultiplier)
 
 import Browser
 import Html exposing (Html, div, img, text)
@@ -19,6 +19,10 @@ comboMultiplierStep = 20
 {-| Defines the multiplier that is applied to the combo multiplier at the time it is increased -}
 comboMultiplierFactor : Int
 comboMultiplierFactor = 2
+
+getComboMultiplier : Int -> Int
+getComboMultiplier combo =
+    2 ^ (combo // comboMultiplierStep)
 
 main : Program () Model Msg
 main =
@@ -112,6 +116,7 @@ type alias Model =
     , bigMultiplier: Bool
     , commandQueue: List Command
     , commandExecution: CommandExecution
+    , lastCommand: Maybe String
     }
 
 type alias AppleStatus =
@@ -163,6 +168,7 @@ init =
             , bigMultiplier = False
             , commandQueue = []
             , commandExecution = Idle
+            , lastCommand = Nothing
             }
     in
         Tuple.pair model
@@ -385,7 +391,7 @@ update msg model =
                         (Process.sleep <| getDelay <| List.length model.commandQueue)
                     )
                 ShowDirection command ->
-                    update (Move command.direction) { model | commandExecution = Animation }
+                    update (Move command.direction) { model | commandExecution = Animation, lastCommand = Just command.id }
                     |> Tuple.mapSecond
                         (\cmd ->
                             Cmd.batch

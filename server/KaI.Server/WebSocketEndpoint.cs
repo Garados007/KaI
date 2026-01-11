@@ -21,6 +21,7 @@ public class WebSocketEndpoint : WebSocketEndpoint<WebSocketConnection>
         factory.Add<Events.Command>();
         factory.Add<Events.Foo>();
         factory.Add<Events.Score>();
+        factory.Add<Events.RequestHighScores>();
     }
 
     public void Reload()

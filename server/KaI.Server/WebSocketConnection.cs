@@ -57,6 +57,7 @@ public class WebSocketConnection : EventConnection
                     logger.Information("Foo!");
                     break;
                 case Events.Score score:
+                {
                     logger.Information("Received score: {score} with combo {combo}", score.ScoreValue, score.Combo);
                     var database = Program.Database;
                     if (database is null)
@@ -77,6 +78,26 @@ public class WebSocketConnection : EventConnection
                         CurrentCombo = score.Combo
                     });
                     break;
+                }
+                case Events.RequestHighScores req:
+                {
+                    var database = Program.Database;
+                    if (database is null)
+                    {
+                        logger.Warning("Database is not available.");
+                        break;
+                    }
+                    await Send(new Events.ScoreStats
+                    {
+                        TodayHighScore = database.TodayHighScore,
+                        AlltimeHighScore = database.AlltimeHighScore,
+                        TodayHighCombo = database.TodayHighCombo,
+                        AlltimeHighCombo = database.AlltimeHighCombo,
+                        CurrentScore = database.CurrentScore?.ScoreValue ?? 0,
+                        CurrentCombo = database.CurrentScore?.Combo ?? 0
+                    });
+                    break;
+                }
             }
         });
         return Task.CompletedTask;

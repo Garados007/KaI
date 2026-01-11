@@ -14,6 +14,6 @@ class HighScoreValue
 
     public DateTime AchievedAt { get; set; } = DateTime.UtcNow;
 
-    [BsonIgnore, JsonIgnore]
+    [JsonIgnore]
     public DateOnly Date => DateOnly.FromDateTime(AchievedAt);
 }

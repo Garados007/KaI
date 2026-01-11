@@ -8,3 +8,4 @@
     - red arrow removed
     - background removed
     - viewbox fixed
+- [shield.svg](https://www.freepik.com/free-vector/knight-shield-cartoon-sticker_19035046.htm)

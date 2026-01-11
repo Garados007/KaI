@@ -33,7 +33,8 @@ COPY ui /app/data
 COPY ui/index.html /app/data/game/
 COPY ui/index.html /app/data/scoreboard/
 COPY --from=server-builder /app /app
-COPY --from=ui-builder /src/content/* /app/data/
+COPY --from=ui-builder /src/content/game/index.js /app/data/game/index.js
+COPY --from=ui-builder /src/content/scoreboard/index.js /app/data/scoreboard/index.js
 RUN ln -s /app/data/fonts /app/data/game/fonts && \
     ln -s /app/data/img /app/data/game/img && \
     ln -s /app/data/style /app/data/game/style && \
@@ -41,7 +42,5 @@ RUN ln -s /app/data/fonts /app/data/game/fonts && \
     ln -s /app/data/img /app/data/scoreboard/img && \
     ln -s /app/data/style /app/data/scoreboard/style
 EXPOSE 5000
-RUN rm -r data
-COPY data /app/data
 #CMD [ "ls", "-R", "/app/data/" ]
 CMD [ "/app/KaI.Server", "--port", "5000", "--data-dir", "/app/data", "--cache-dir", "/app/cache", "--twitch-client-id", "YOUR_TWITCH_CLIENT_ID_HERE" ]

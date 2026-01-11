@@ -10,6 +10,8 @@ import Json.Decode as Decode
 import Task
 import Process
 import KaI.Images.Apple
+import KaI.Images.Shield
+import KaI.Images.Arrow
 import KaI.NetworkMsg exposing (Direction(..), Command)
 
 {-| Defines at which combo step the multiplier is increased -}
@@ -117,6 +119,7 @@ type alias Model =
     , commandQueue: List Command
     , commandExecution: CommandExecution
     , lastCommand: Maybe String
+    , shields: Int
     }
 
 type alias AppleStatus =
@@ -125,7 +128,12 @@ type alias AppleStatus =
     , column: Int
     , rotation: Float
     , consumed: Bool
+    , kind: AppleKind
     }
+
+type AppleKind
+    = Regular
+    | ExtraShield
 
 type CommandExecution
     = Idle
@@ -135,10 +143,11 @@ type CommandExecution
 
 generateApple : Model -> Generator AppleStatus
 generateApple model =
-    Random.map2
-        (\col rot -> { id = model.nextId, column = col, height = model.height, rotation = rot, consumed = False })
+    Random.map3
+        (\col rot kind -> { id = model.nextId, column = col, height = model.height, rotation = rot, consumed = False, kind = kind })
         (Random.int 0 (model.columns - 1))
         (Random.float -15.0 15.0)
+        (Random.weighted (0.9, Regular) [(0.1, ExtraShield)])
 
 type Msg
     = None
@@ -169,6 +178,7 @@ init =
             , commandQueue = []
             , commandExecution = Idle
             , lastCommand = Nothing
+            , shields = 3
             }
     in
         Tuple.pair model
@@ -220,7 +230,10 @@ view model =
                                     , "deg"
                                     ]
                             ]
-                            [ KaI.Images.Apple.view ]
+                            [ case apple.kind of
+                                Regular -> KaI.Images.Apple.view
+                                ExtraShield -> KaI.Images.Shield.view
+                            ]
                             -- [ img [ Html.Attributes.src "img/apple.svg", Html.Attributes.alt "Apple" ] [] ]
                         ) :: res
                     , if apple.consumed
@@ -244,6 +257,15 @@ view model =
                 ]
             ]
             [ text <| "x" ++ String.fromInt model.comboMultiplier ]
+        , if model.shields > 0
+            then div
+                [ class "shields" ]
+                [ KaI.Images.Shield.view
+                , if model.shields > 1
+                    then div [ class "shield-count" ] [ text <| "x" ++ String.fromInt model.shields ]
+                    else text ""
+                ]
+            else text ""
         , case model.commandExecution of
             Idle -> text ""
             ShowText command -> div [ class "speech-bubble" ] [ text command.text ]
@@ -263,7 +285,7 @@ view model =
                         , "%"
                         ]
                 ]
-                [ img [ Html.Attributes.src "img/arrow.svg", Html.Attributes.alt "Arrow" ] [] ]
+                [ KaI.Images.Arrow.view ]
             _ -> text ""
         ]
 
@@ -281,9 +303,12 @@ moveApplesDownAndScore model =
                 (\apple -> apple.column == model.basket) scoreableApples
             |> List.isEmpty |> not
 
+        useShield : Bool
+        useShield = not hitScore && not (List.isEmpty scoreableApples) && model.shields > 0
+
         newCombo : Int
         newCombo =
-            if List.isEmpty scoreableApples then
+            if List.isEmpty scoreableApples || useShield then
                 model.combo
             else
                 if hitScore then
@@ -293,7 +318,7 @@ moveApplesDownAndScore model =
 
         newComboMultiplier : Int
         newComboMultiplier =
-            if List.isEmpty scoreableApples then
+            if List.isEmpty scoreableApples || useShield then
                 model.comboMultiplier
             else
                 if hitScore then
@@ -324,12 +349,21 @@ moveApplesDownAndScore model =
         , combo = newCombo
         , comboMultiplier = newComboMultiplier
         , score =
-            if List.isEmpty scoreableApples then
+            if List.isEmpty scoreableApples || useShield then
                 model.score
             else
                 model.score + newCombo * newComboMultiplier
         , bigCombo = newCombo > model.combo
         , bigMultiplier = newComboMultiplier > model.comboMultiplier
+        , shields =
+            if useShield then
+                model.shields - 1
+            else if hitScore
+            then (+) model.shields
+                <| List.length
+                <| List.filter (\apple -> apple.kind == ExtraShield) scoreableApples
+            else
+                model.shields
         }
 
 spawnAppleIfNeeded : Model -> Cmd Msg

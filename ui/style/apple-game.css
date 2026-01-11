@@ -110,7 +110,7 @@
   bottom: 12%;
   translate: -50% 0;
 }
-.apple-game .move-arrow img {
+.apple-game .move-arrow svg {
   filter: drop-shadow( 3px 3px 2px rgba(0, 0, 0, .7));
   animation-name: wiggle-anim;
   animation-duration: 1s;
@@ -136,4 +136,16 @@
   to {
     translate: 0 -1em;
   }
+}
+.apple-game .shields {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  font-family: "Knewave";
+  font-size: 0.75em;
+}
+.apple-game .shields svg {
+  width: 1.5em;
+  height: 1.5em;
 }

@@ -18,10 +18,12 @@ body {
     width: 100vw;
     height: 100vh;
     align-items: center;
+    flex-wrap: wrap;
 }
 .scoreboard .entry {
     flex-grow: 1;
-    flex-shrink: 1;
+    flex-shrink: 0;
+    width: 40%;
     display: flex;
     padding: 0 2em;
 }

@@ -35,6 +35,14 @@ view model =
                     [ div [] [ text "All-time High Score:" ]
                     , div [] [ text <| String.fromInt stats.allTimeHighScore.value ]
                     ]
+                , div [ class "entry" ]
+                    [ div [] [ text "Today's High Combo:" ]
+                    , div [] [ text <| String.fromInt stats.todayHighCombo.value ]
+                    ]
+                , div [ class "entry" ]
+                    [ div [] [ text "All-time High Combo:" ]
+                    , div [] [ text <| String.fromInt stats.allTimeHighCombo.value ]
+                    ]
                 ]
 
 update : Msg -> Model -> ( Model, Cmd Msg )

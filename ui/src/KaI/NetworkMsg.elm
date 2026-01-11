@@ -28,12 +28,14 @@ decodeMsg =
 type SendNetworkMsg
     = SendCommand Command
     | SendScore Score
+    | RequestHighScores
 
 encodeMsg : SendNetworkMsg -> JE.Value
 encodeMsg msg =
     case msg of
         SendCommand commandMsg -> encodeCommandMsg commandMsg
         SendScore scoreMsg -> encodeScore scoreMsg
+        RequestHighScores -> JE.object [ ("$type", JE.string "RequestHighScores") ]
 
 type Direction
     = Left

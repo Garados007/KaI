@@ -1,23 +1,22 @@
 module KaI.Main exposing (..)
 
 import KaI.Ports
-import KaI.View.AppleGame as AppleGame
 import Browser
 import Html
 import WebSocket
 import Json.Decode as JD
-import Json.Encode as JE
 import KaI.NetworkMsg as NetworkMsg
+-- this line might be replaced with the current main module. This is used to support multiple UIs with the same codebase
+import KaI.Main.Game as Core
 
 main : Program () Model Msg
 main =
     Browser.document
         { init = init
         , view = \model -> Browser.Document
-            (String.concat
-                [ "Score: ", String.fromInt model.score, " - Apple Game" ]
+            (Core.title model
             )
-            [ Html.map WrapGameMsg <| AppleGame.view model ]
+            [ Html.map WrapGameMsg <| Core.view model ]
         , update = update
         , subscriptions = \_ ->
             Sub.batch
@@ -26,10 +25,10 @@ main =
                 ]
         }
 
-type alias Model = AppleGame.Model
+type alias Model = Core.Model
 
 type Msg
-    = WrapGameMsg AppleGame.Msg
+    = WrapGameMsg Core.Msg
     | WrapWebSocketMsg (Result JD.Error WebSocket.WebSocketMsg)
     | ReconnectWebSocket
 
@@ -37,7 +36,7 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     let
         ( gameModel, gameCmd ) =
-            AppleGame.init
+            Core.init ()
     in Tuple.pair gameModel
         <| Cmd.batch
         [ Cmd.map WrapGameMsg gameCmd
@@ -46,50 +45,17 @@ init _ =
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case Debug.log "msg" msg of
+    case msg of
         WrapGameMsg gameMsg ->
-            let
-                ( updatedGameModel, gameCmd ) =
-                    AppleGame.update gameMsg model
-            in Tuple.pair updatedGameModel
-                <| Cmd.batch
-                [ Cmd.map WrapGameMsg gameCmd
-                , if (model.score, model.combo) /= (updatedGameModel.score, updatedGameModel.combo) then
-                    send <| NetworkMsg.SendScore
-                        { lastCommand = updatedGameModel.lastCommand
-                        , score = updatedGameModel.score
-                        , combo = updatedGameModel.combo
-                        }
-                  else
-                    Cmd.none
-                ]
+            Core.update gameMsg model
+            |> Tuple.mapSecond (Cmd.map WrapGameMsg)
         WrapWebSocketMsg (Ok (WebSocket.Data {data})) ->
             let
-                decodedMsg = Debug.log "decodedMsg" <|
-                    JD.decodeString NetworkMsg.decodeMsg data
+                decodedMsg = JD.decodeString NetworkMsg.decodeMsg data
             in case decodedMsg of
                 Ok networkMsg ->
-                    case networkMsg of
-                        NetworkMsg.RecCommand commandMsg ->
-                            AppleGame.pushCommand commandMsg model
-                            |> Tuple.mapSecond (Cmd.map WrapGameMsg)
-                            |> Tuple.mapSecond
-                                (\cmd -> Cmd.batch
-                                    [ cmd
-                                    , send <| NetworkMsg.SendCommand commandMsg
-                                    ]
-                                )
-                        NetworkMsg.RecScoreStats scoreStatsMsg ->
-                            if model.lastCommand == Nothing
-                            then Tuple.pair
-                                { model
-                                | score = max model.score scoreStatsMsg.currentScore
-                                , combo = max model.combo scoreStatsMsg.currentCombo
-                                , comboMultiplier = AppleGame.getComboMultiplier <| max model.combo scoreStatsMsg.currentCombo
-                                }
-                                Cmd.none
-                            else (model, Cmd.none)
-
+                    Core.receive networkMsg model
+                    |> Tuple.mapSecond (Cmd.map WrapGameMsg)
                 Err _ ->
                     -- Handle decode error here
                     ( model, Cmd.none)
@@ -97,14 +63,6 @@ update msg model =
             -- Handle WebSocket errors here
             ( model, Cmd.none)
         ReconnectWebSocket -> Tuple.pair model connect
-
-send : NetworkMsg.SendNetworkMsg -> Cmd msg
-send networkMsg =
-    WebSocket.send KaI.Ports.sendSocketCommand
-    <| WebSocket.Send
-        { name = "wss"
-        , content = JE.encode 0 <| NetworkMsg.encodeMsg networkMsg
-        }
 
 connect : Cmd msg
 connect =

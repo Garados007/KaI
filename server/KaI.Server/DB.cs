@@ -28,6 +28,8 @@ class DB : IDisposable
     private HighScoreValue? alltimeHighCombo;
     public HighScoreValue? AlltimeHighCombo => alltimeHighCombo;
 
+    public Events.Score? CurrentScore { get; private set; }
+
     public DB(string path)
     {
         Database = new LiteDatabase(path);
@@ -69,6 +71,7 @@ class DB : IDisposable
         // check if the date has been changed for today's high score
         UpdateScoreValue(ref todayHighScore, ref alltimeHighScore, HighScores, entry.Timestamp, score.LastCommand, score.ScoreValue);
         UpdateScoreValue(ref todayHighCombo, ref alltimeHighCombo, HighCombos, entry.Timestamp, score.LastCommand, score.Combo);
+        CurrentScore = score;
     }
 
     private static void UpdateScoreValue(ref HighScoreValue? todayVar, ref HighScoreValue? alltimeVar, ILiteCollection<HighScoreValue> collection, DateTime now, string? chatId, long newValue)

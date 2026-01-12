@@ -1,4 +1,5 @@
 using System.Text;
+using KaI.Brain.Training;
 using NeuralNetworkNET;
 using NeuralNetworkNET.APIs;
 using NeuralNetworkNET.APIs.Interfaces;
@@ -147,6 +148,11 @@ public class DirectionClassifier
     const int NumberOfSamplesPerText = 20;
 
     private static List<(float[] inputs, float[] outputs)> CreateTrainingData()
+    {
+        return new DirectionData().CreateSamples();
+    }
+
+    private static List<(float[] inputs, float[] outputs)> CreateTrainingData_old()
     {
         var data = new List<(float[] inputs, float[] outputs)>();
         // list of text pieces

@@ -25,9 +25,9 @@ class DirectionData : DataBase<Direction>
         return
         [
             new Dataset<string, Direction>(Direction.Up, "up", "ascend", "rise", "hoch", "oben"),
-            new Dataset<string, Direction>(Direction.Down, "down", "descend", "fall", "runter", "unten"),
-            new Dataset<string, Direction>(Direction.Left, "left", "links", "left", "links"),
-            new Dataset<string, Direction>(Direction.Right, "right", "rechts", "right", "rechts"),
+            new Dataset<string, Direction>(Direction.Down, "down", "descend", "fall", "runter", "unten", "meep", "drop"),
+            new Dataset<string, Direction>(Direction.Left, "left", "links", "left", "links", "lol"),
+            new Dataset<string, Direction>(Direction.Right, "right", "rechts", "right", "rechts", "re"),
         ];
     }
 }

@@ -13,7 +13,11 @@ abstract class DataBase<TOutput>
 
     protected abstract int InputSize { get; }
 
-    protected abstract int NumberOfSamplesPerText { get;}
+    public int NumberOfSamplesPerText
+    {
+        get => field;
+        set => field = Math.Max(1, value);
+    } = 100;
 
     private float[] CreateInputs(ReadOnlySpan<char> text)
     {
@@ -105,6 +109,12 @@ abstract class DataBase<TOutput>
     {
         int samplesCreated = 0;
         Span<char> buffer = stackalloc char[InputSize];
+        if(input.Length == buffer.Length)
+        {
+            CopyToBufferAndFill(input, buffer, offset, rng);
+            targetBag.Add((CreateInputs(buffer), outputs));
+            return;
+        }
         while (samplesCreated < NumberOfSamplesPerText)
         {
             CopyToBufferAndFill(input, buffer, offset, rng);

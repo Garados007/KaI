@@ -6,8 +6,6 @@ class DirectionData : DataBase<Direction>
 
     protected override int OutputSize => 4;
 
-    protected override int NumberOfSamplesPerText => 100;
-
     protected override float GetOutputWeight(Direction output, int index)
     {
         return output switch
@@ -25,7 +23,8 @@ class DirectionData : DataBase<Direction>
         return
         [
             new Dataset<string, Direction>(Direction.Up, "up", "ascend", "rise", "hoch", "oben"),
-            new Dataset<string, Direction>(Direction.Down, "down", "descend", "fall", "runter", "unten", "meep", "drop"),
+            new Dataset<string, Direction>(Direction.Down, "down", "descend", "fall", "runter", "unten", "meep", "drop",
+                "d".PadRight(InputSize, ' '), "o".PadRight(InputSize, ' '), "w".PadRight(InputSize, ' '), "n".PadRight(InputSize, ' ')),
             new Dataset<string, Direction>(Direction.Left, "left", "links", "left", "links", "lol"),
             new Dataset<string, Direction>(Direction.Right, "right", "rechts", "right", "rechts", "re"),
         ];

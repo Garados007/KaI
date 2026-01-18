@@ -16,6 +16,8 @@ class Settings
 
     public DirectoryInfo? CacheDirectory { get; set; }
 
+    public FileInfo? Network { get; set; }
+
     public string? TwitchApiClientId { get; set; }
 };
 
@@ -73,6 +75,14 @@ class Program
         });
         rootCommand.Options.Add(cacheDirOption);
 
+        // neuronal network file path
+        var networkOption = new Option<FileInfo>("--network")
+        {
+            Description = "The neuronal network file to load. If this file does not exists, a new network will be created.",
+            Required = false,
+        };
+        rootCommand.Options.Add(networkOption);
+
         // twitch api client id option
         var twitchClientIdOption = new Option<string>("--twitch-client-id")
         {
@@ -87,6 +97,7 @@ class Program
             Port = result.GetValue(portOption),
             DataDirectory = result.GetValue(dataDirOption),
             CacheDirectory = result.GetValue(cacheDirOption),
+            Network = result.GetValue(networkOption),
             TwitchApiClientId = result.GetValue(twitchClientIdOption),
         }));
 
@@ -116,7 +127,7 @@ class Program
     static async Task SetupBrain(Settings settings)
     {
         Brain.DirectionClassifier? classifier;
-        if(settings.CacheDirectory is null)
+        if(settings.CacheDirectory is null && settings.Network is null)
         {
             // classifier = Brain.DirectionClassifier.CreateNew();
             // await classifier.Training();
@@ -124,13 +135,13 @@ class Program
             log.Error("No cache directory specified, cannot load or save trained classifier.");
             return;
         }
-        var fileInfo = new FileInfo(Path.Combine(settings.CacheDirectory.FullName, "trained.nnet"));
-        classifier = Brain.DirectionClassifier.LoadFromFile(fileInfo);
+        var networkFile = settings.Network ?? new FileInfo(Path.Combine(settings.CacheDirectory!.FullName, "trained.nnet"));
+        classifier = Brain.DirectionClassifier.LoadFromFile(networkFile);
         if (classifier is null)
         {
             classifier = Brain.DirectionClassifier.CreateNew();
             await classifier.Training();
-            classifier.SaveToFile(fileInfo);
+            classifier.SaveToFile(networkFile);
         }
         Classifier = classifier;
     }

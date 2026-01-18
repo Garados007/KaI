@@ -19,6 +19,8 @@ class Settings
     public FileInfo? Network { get; set; }
 
     public string? TwitchApiClientId { get; set; }
+
+    public bool NoTraining { get; set; } = false;
 };
 
 class Program
@@ -91,6 +93,15 @@ class Program
         };
         rootCommand.Options.Add(twitchClientIdOption);
 
+        // no training flag
+        var noTrainingFlag = new Option<bool>("--no-training")
+        {
+            Description = "If set, the server will not perform any training of the neuronal network.",
+            Required = false,
+            DefaultValueFactory = _ => Settings.NoTraining,
+        };
+        rootCommand.Options.Add(noTrainingFlag);
+
         // finalize root command
         rootCommand.SetAction(async result => await RunServerAsync(new Settings
         {
@@ -99,6 +110,7 @@ class Program
             CacheDirectory = result.GetValue(cacheDirOption),
             Network = result.GetValue(networkOption),
             TwitchApiClientId = result.GetValue(twitchClientIdOption),
+            NoTraining = result.GetValue(noTrainingFlag),
         }));
 
         // parse the finalized configuration and run, this also handles help and version commands
@@ -139,6 +151,11 @@ class Program
         classifier = Brain.DirectionClassifier.LoadFromFile(networkFile);
         if (classifier is null)
         {
+            if(settings.NoTraining)
+            {
+                log.Error("No existing network found at '{path}' and training is disabled. Cannot proceed.", networkFile.FullName);
+                return;
+            }
             classifier = Brain.DirectionClassifier.CreateNew();
             await classifier.Training();
             classifier.SaveToFile(networkFile);

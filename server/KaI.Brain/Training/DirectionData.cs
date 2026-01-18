@@ -18,7 +18,7 @@ class DirectionData : DataBase<Direction>
         };
     }
 
-    protected override List<Dataset<string, Direction>> GetBaseDatasets()
+    public override List<Dataset<string, Direction>> GetBaseDatasets()
     {
         return
         [

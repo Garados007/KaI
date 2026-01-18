@@ -5,7 +5,7 @@ using InputOutputPair = (float[] Inputs, float[] Outputs);
 
 abstract class DataBase<TOutput>
 {
-    protected abstract List<Dataset<string, TOutput>> GetBaseDatasets();
+    public abstract List<Dataset<string, TOutput>> GetBaseDatasets();
 
     protected abstract float GetOutputWeight(TOutput output, int index);
 
@@ -109,12 +109,12 @@ abstract class DataBase<TOutput>
     {
         int samplesCreated = 0;
         Span<char> buffer = stackalloc char[InputSize];
-        if(input.Length == buffer.Length)
-        {
-            CopyToBufferAndFill(input, buffer, offset, rng);
-            targetBag.Add((CreateInputs(buffer), outputs));
-            return;
-        }
+        // if(input.Length == buffer.Length)
+        // {
+        //     CopyToBufferAndFill(input, buffer, offset, rng);
+        //     targetBag.Add((CreateInputs(buffer), outputs));
+        //     return;
+        // }
         while (samplesCreated < NumberOfSamplesPerText)
         {
             CopyToBufferAndFill(input, buffer, offset, rng);

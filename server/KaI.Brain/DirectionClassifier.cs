@@ -48,9 +48,9 @@ public class DirectionClassifier
             NetworkManager.NewSequential(
                 TensorInfo.Linear(InputSize),
                 NetworkLayers.FullyConnected(10000, NeuralNetworkNET.APIs.Enums.ActivationType.ReLU),
-                NetworkLayers.FullyConnected(500, NeuralNetworkNET.APIs.Enums.ActivationType.ReLU),
-                NetworkLayers.FullyConnected(10, NeuralNetworkNET.APIs.Enums.ActivationType.ReLU),
-                NetworkLayers.FullyConnected(4, NeuralNetworkNET.APIs.Enums.ActivationType.ReLU),
+                NetworkLayers.FullyConnected(1000, NeuralNetworkNET.APIs.Enums.ActivationType.ReLU),
+                NetworkLayers.FullyConnected(100, NeuralNetworkNET.APIs.Enums.ActivationType.ReLU),
+                NetworkLayers.FullyConnected(20, NeuralNetworkNET.APIs.Enums.ActivationType.ReLU),
                 NetworkLayers.Softmax(4)
             )
         );
@@ -66,7 +66,8 @@ public class DirectionClassifier
 
         Span<char> buffer = stackalloc char[10];
         var textBuffer = text.AsSpan();
-        for(int offset = 0; offset < text.Length; offset++)
+        var maxOffset = Math.Max(1, text.Length - buffer.Length + 1);
+        for(int offset = 0; offset < maxOffset; offset++)
         {
             buffer.Fill(' ');
             var copySize = Math.Min(textBuffer.Length - offset, buffer.Length);
@@ -97,8 +98,11 @@ public class DirectionClassifier
     {
         var dataSource = new DirectionData();
         var data = dataSource.CreateSamples();
-        var datasetRaw = DatasetLoader.Training(data, data.Count);
-        var (datasetTraining, datasetTest) = datasetRaw.PartitionWithTest(0.9f);
+        var datasetTraining = DatasetLoader.Training(data, data.Count);
+        dataSource.NumberOfSamplesPerText = 10;
+        var dataTestSource = dataSource.CreateSamples();
+        var datasetTest = DatasetLoader.Test(dataTestSource);
+        var datasetAll = DatasetLoader.Validation(data.Concat(dataTestSource));
         float lastAccuracy = 0;
         float lastCost = float.MaxValue;
         int epochs = 0;
@@ -109,7 +113,7 @@ public class DirectionClassifier
             TrainingAlgorithms.Adam(),
             // TrainingAlgorithms.Momentum(), // 64.77% accuracy
             // TrainingAlgorithms.AdaDelta(), // 77.27% accuracy
-            TrainingAlgorithms.RMSProp(), // 87.5% accuracy
+            // TrainingAlgorithms.RMSProp(), // 87.5% accuracy
             // TrainingAlgorithms.AdaGrad(), // 76.14% accuracy
         ];
         while(algorithms.Count > 0)
@@ -126,9 +130,9 @@ public class DirectionClassifier
                 trainingCallback: (args) =>
                 {
                     Serilog.Log.Information("Training step [{alg}]: Epoch {epoch}, time: {time}, cost: {cost}, accuracy: {accuracy}",
-                        algorithms[0].AlgorithmType, args.Iteration, start.Elapsed, args.Result.Cost, args.Result.Accuracy);
+                        algorithms[0].AlgorithmType, args.Iteration + epochs, start.Elapsed + totalTime, args.Result.Cost, args.Result.Accuracy);
                 });
-            var (Cost, Classified, Accuracy) = network.Evaluate(datasetRaw);
+            var (Cost, Classified, Accuracy) = network.Evaluate(datasetAll);
             epochs += result.CompletedEpochs;
             totalTime += result.TrainingTime;
             Serilog.Log.Information("Training step [{alg}]: Epochs {epochs}, time: {time}, cost: {cost}, classified: {classified}/{total}, accuracy: {accuracy}",
@@ -145,9 +149,17 @@ public class DirectionClassifier
             lastCost = Cost;
         }
         {
-            var (Cost, Classified, Accuracy) = network.Evaluate(datasetRaw);
+            var (Cost, Classified, Accuracy) = network.Evaluate(datasetAll);
             Serilog.Log.Information("Training completed: Epochs {epochs}, time: {time}, cost: {cost}, classified: {classified}/{total}, accuracy: {accuracy}",
                 epochs, totalTime, Cost, Classified, data.Count, Accuracy);
+            foreach (var entry in dataSource.GetBaseDatasets())
+            {
+                foreach (var variant in entry.InputVariants)
+                {
+                    var result = Classify(variant, Direction.Up | Direction.Down | Direction.Left | Direction.Right);
+                    Serilog.Log.Debug("{expect_direction}: '{variant}' => '{text}' {result_direction} ({probability})", entry.Output, variant, result.Text, result.Direction, result.Confidence);
+                }
+            }
             Serilog.Log.Debug("Left: {data}", network.Forward(CreateInputs("left      ".AsSpan())));
             Serilog.Log.Debug("Right: {data}", network.Forward(CreateInputs("right     ".AsSpan())));
             Serilog.Log.Debug("Up: {data}", network.Forward(CreateInputs("up        ".AsSpan())));
